@@ -1,0 +1,25 @@
+# Rust / Cargo build artifacts
+# Direktori ini berisi semua hasil kompilasi dan bisa menjadi sangat besar.
+# Selalu dibuat ulang saat menjalankan `cargo build` atau `cargo test`.
+/target/
+
+# Soroban CLI generated files
+# Direktori ini menyimpan informasi deployment lokal seperti ID kontrak.
+# Setiap developer akan menghasilkan file ini sendiri.
+/.soroban/
+
+# IDE and editor-specific files
+# Ini adalah file pengaturan spesifik pengguna dan tidak boleh dibagikan.
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating System generated files
+.DS_Store
+Thumbs.db
+
+# Local environment variables
+# Jangan pernah meng-commit rahasia atau konfigurasi lokal!
+.env
