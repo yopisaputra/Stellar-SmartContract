@@ -87,14 +87,6 @@
                       },
                       {
                         "key": {
-                          "symbol": "first_d"
-                        },
-                        "val": {
-                          "map": []
-                        }
-                      },
-                      {
-                        "key": {
                           "symbol": "goal"
                         },
                         "val": {
@@ -103,10 +95,26 @@
                       },
                       {
                         "key": {
+                          "symbol": "history"
+                        },
+                        "val": {
+                          "vec": []
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "is_init"
                         },
                         "val": {
                           "bool": true
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "leaderbrd"
+                        },
+                        "val": {
+                          "vec": []
                         }
                       },
                       {
@@ -123,6 +131,14 @@
                         },
                         "val": {
                           "i128": "0"
+                        }
+                      },
+                      {
+                        "key": {
+                          "symbol": "streaks"
+                        },
+                        "val": {
+                          "map": []
                         }
                       },
                       {

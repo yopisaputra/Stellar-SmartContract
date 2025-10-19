@@ -1,8 +1,7 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, Map, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env, Map, Symbol, Vec};
 
-// Storage keys untuk contract data
-// Kita pakai symbol_short! untuk efisiensi (max 9 karakter)
+// --- Kunci Storage --- 
 const CAMPAIGN_GOAL: Symbol = symbol_short!("goal");
 const CAMPAIGN_DEADLINE: Symbol = symbol_short!("deadline");
 const TOTAL_RAISED: Symbol = symbol_short!("raised");
@@ -10,166 +9,151 @@ const DONATIONS: Symbol = symbol_short!("donations");
 const CAMPAIGN_OWNER: Symbol = symbol_short!("owner");
 const XLM_TOKEN_ADDRESS: Symbol = symbol_short!("xlm_addr");
 const IS_ALREADY_INIT: Symbol = symbol_short!("is_init");
-// BARU: Key untuk menyimpan tanggal donasi pertama
-const FIRST_DONATION: Symbol = symbol_short!("first_d");
+const HISTORY: Symbol = symbol_short!("history");
+const LEADERBOARD: Symbol = symbol_short!("leaderbrd");
+const STREAKS: Symbol = symbol_short!("streaks");
 
+// --- Konstanta Konfigurasi ---
+const LEADERBOARD_SIZE: u32 = 3; // Menampilkan 3 donatur teratas
+const ONE_DAY_SECONDS: u64 = 86400; // 60 detik * 60 menit * 24 jam
 
-// Contract struct
+// --- Struct Data --- 
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DonationRecord {
+    pub donor: Address,
+    pub amount: i128,
+    pub timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TopDonor {
+    pub donor: Address,
+    pub total_donation: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StreakInfo {
+    pub last_donation_day: u64,
+    pub streak_days: u32,
+}
+
 #[contract]
 pub struct CrowdfundingContract;
 
-// Contract implementation
-// Note: Kita pakai i128 (signed integer) untuk amounts karena:
-// - Ini standard Stellar ecosystem (compatible dengan token contracts)
-// - Memungkinkan safe error checking (hitung dulu, validate kemudian)
-// - Walaupun donations tidak bisa negatif, i128 membantu catch bugs
 #[contractimpl]
 impl CrowdfundingContract {
 
-    /// Initialize campaign baru dengan goal, deadline, dan XLM token address
-    /// Frontend perlu pass: owner address, goal (in stroops), deadline (unix timestamp), xlm_token (address)
     pub fn initialize(
         env: Env,
-        owner: Address,    // Address creator campaign
-        goal: i128,        // Target amount (stroops: 1 XLM = 10,000,000 stroops)
-        deadline: u64,     // Unix timestamp kapan campaign berakhir
-        xlm_token: Address, // XLM token contract address (native token di testnet)
+        owner: Address,
+        goal: i128,
+        deadline: u64,
+        xlm_token: Address,
     ) {
-        // Verify owner adalah yang claim
         owner.require_auth();
 
-        // Store campaign settings ke blockchain
         env.storage().instance().set(&CAMPAIGN_OWNER, &owner);
         env.storage().instance().set(&CAMPAIGN_GOAL, &goal);
         env.storage().instance().set(&CAMPAIGN_DEADLINE, &deadline);
         env.storage().instance().set(&TOTAL_RAISED, &0i128);
         env.storage().instance().set(&XLM_TOKEN_ADDRESS, &xlm_token);
-
-        // Set initialization flag to true
         env.storage().instance().set(&IS_ALREADY_INIT, &true);
-
-        // Initialize empty donations map
-        // Map<Address, i128> = tracking siapa donate berapa
-        let donations: Map<Address, i128> = Map::new(&env);
-        env.storage().instance().set(&DONATIONS, &donations);
-
-        // BARU: Inisialisasi map untuk menyimpan tanggal donasi pertama
-        let first_donations: Map<Address, u64> = Map::new(&env);
-        env.storage().instance().set(&FIRST_DONATION, &first_donations);
+        env.storage().instance().set(&DONATIONS, &Map::<Address, i128>::new(&env));
+        env.storage().instance().set(&HISTORY, &Vec::<DonationRecord>::new(&env));
+        env.storage().instance().set(&LEADERBOARD, &Vec::<TopDonor>::new(&env));
+        env.storage().instance().set(&STREAKS, &Map::<Address, StreakInfo>::new(&env));
     }
 
-    /// Donate ke campaign menggunakan XLM token transfer
-    /// Frontend perlu pass: donor address, amount (stroops)
     pub fn donate(env: Env, donor: Address, amount: i128) {
-        // Verify donor authorization
         donor.require_auth();
 
-        // Check apakah campaign masih aktif
-        let deadline: u64 = env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap();
-        if env.ledger().timestamp() > deadline {
+        if env.ledger().timestamp() > env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap() {
             panic!("Campaign has ended");
         }
-
-        // Validate amount harus positif
         if amount <= 0 {
             panic!("Donation amount must be positive");
         }
 
-        // Get XLM token contract dan contract address
         let xlm_token_address: Address = env.storage().instance().get(&XLM_TOKEN_ADDRESS).unwrap();
-        let xlm_token = token::Client::new(&env, &xlm_token_address);
-        let contract_address = env.current_contract_address();
+        token::Client::new(&env, &xlm_token_address).transfer(&donor, &env.current_contract_address(), &amount);
 
-        // Transfer XLM dari donor ke contract ini
-        xlm_token.transfer(&donor, &contract_address, &amount);
+        let mut total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap();
+        total_raised += amount;
+        env.storage().instance().set(&TOTAL_RAISED, &total_raised);
 
-        // Update total raised
-        let mut total: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap();
-        total += amount;
-        env.storage().instance().set(&TOTAL_RAISED, &total);
-
-        // Track donasi individual donor
         let mut donations: Map<Address, i128> = env.storage().instance().get(&DONATIONS).unwrap();
-        let current_donation = donations.get(donor.clone()).unwrap_or(0);
-
-        // BARU: Jika ini donasi pertama (current_donation == 0), catat waktunya
-        if current_donation == 0 {
-            let mut first_donations: Map<Address, u64> = env.storage().instance().get(&FIRST_DONATION).unwrap();
-            first_donations.set(donor.clone(), env.ledger().timestamp());
-            env.storage().instance().set(&FIRST_DONATION, &first_donations);
-        }
-
-        donations.set(donor, current_donation + amount);
+        let total_donor_donation = donations.get(donor.clone()).unwrap_or(0) + amount;
+        donations.set(donor.clone(), total_donor_donation);
         env.storage().instance().set(&DONATIONS, &donations);
+
+        let mut history: Vec<DonationRecord> = env.storage().instance().get(&HISTORY).unwrap();
+        history.push_back(DonationRecord { donor: donor.clone(), amount, timestamp: env.ledger().timestamp() });
+        env.storage().instance().set(&HISTORY, &history);
+
+        Self::update_leaderboard(&env, donor.clone(), total_donor_donation);
+        Self::update_streak(&env, donor);
     }
 
-    // BARU: Fungsi untuk mengambil tanggal donasi pertama
-    pub fn get_first_donation_date(env: Env, donor: Address) -> u64 {
-        let first_donations: Map<Address, u64> = env.storage().instance().get(&FIRST_DONATION).unwrap();
-        first_donations.get(donor).unwrap_or(0)
-    }
-
-    /// Get total amount yang sudah terkumpul
-    /// Frontend bisa call tanpa parameter
-    pub fn get_total_raised(env: Env) -> i128 {
-        env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0)
-    }
-
-    /// Get berapa banyak specific donor sudah donate
-    /// Frontend perlu pass: donor address
-    pub fn get_donation(env: Env, donor: Address) -> i128 {
-        let donations: Map<Address, i128> = env.storage().instance().get(&DONATIONS).unwrap();
-        donations.get(donor).unwrap_or(0)
-    }
-
-    // Get initialization status - for frontend to check if contract is initialized
-    pub fn get_is_already_init(env: Env) -> bool {
-        env.storage().instance().get(&IS_ALREADY_INIT).unwrap_or(false)
-    }
-
-    /// Mengembalikan goal amount dari campaign
-    pub fn get_goal(env: Env) -> i128 {
-        env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0)
-    }
-
-    /// Mengembalikan deadline timestamp dari campaign
-    pub fn get_deadline(env: Env) -> u64 {
-        env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap_or(0)
-    }
-
-    /// Cek apakah total donasi sudah mencapai atau melebihi goal
-    pub fn is_goal_reached(env: Env) -> bool {
-        let total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0);
-        let goal: i128 = env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0);
-        total_raised >= goal
-    }
-
-    /// Cek apakah campaign sudah berakhir (melewati deadline)
-    pub fn is_ended(env: Env) -> bool {
-        let deadline: u64 = env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap_or(0);
-        env.ledger().timestamp() > deadline
-    }
-
-    /// Menghitung persentase progress donasi terhadap goal
-    pub fn get_progress_percentage(env: Env) -> i128 {
-        let total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0);
-        let goal: i128 = env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0);
-        if goal == 0 {
-            return 0; // Hindari pembagian dengan nol
+    fn update_leaderboard(env: &Env, donor: Address, total_donation: i128) {
+        let mut leaderboard: Vec<TopDonor> = env.storage().instance().get(&LEADERBOARD).unwrap();
+        
+        if let Some(index) = leaderboard.iter().position(|d| d.donor == donor) {
+            leaderboard.remove(index as u32);
         }
-        (total_raised * 100) / goal
+
+        let mut insert_pos = leaderboard.len();
+        for (i, top_donor) in leaderboard.iter().enumerate() {
+            if total_donation > top_donor.total_donation {
+                insert_pos = i as u32;
+                break;
+            }
+        }
+
+        if insert_pos < LEADERBOARD_SIZE {
+            leaderboard.insert(insert_pos, TopDonor { donor, total_donation });
+            if leaderboard.len() > LEADERBOARD_SIZE {
+                leaderboard.pop_back();
+            }
+        }
+
+        env.storage().instance().set(&LEADERBOARD, &leaderboard);
     }
 
-    /// Mengizinkan donor untuk menarik kembali donasi jika goal tidak tercapai setelah deadline
+    fn update_streak(env: &Env, donor: Address) {
+        let mut streaks: Map<Address, StreakInfo> = env.storage().instance().get(&STREAKS).unwrap();
+        let current_day = env.ledger().timestamp() / ONE_DAY_SECONDS;
+
+        let mut streak_info = streaks.get(donor.clone()).unwrap_or(StreakInfo {
+            last_donation_day: 0,
+            streak_days: 0,
+        });
+
+        if streak_info.last_donation_day > 0 {
+            if current_day == streak_info.last_donation_day + 1 {
+                streak_info.streak_days += 1;
+            } else if current_day > streak_info.last_donation_day {
+                streak_info.streak_days = 1;
+            }
+        } else {
+            streak_info.streak_days = 1;
+        }
+
+        streak_info.last_donation_day = current_day;
+        streaks.set(donor, streak_info);
+        env.storage().instance().set(&STREAKS, &streaks);
+    }
+
     pub fn refund(env: Env, donor: Address) {
         donor.require_auth();
 
-        // Ambil semua data dari storage sekali saja untuk efisiensi
         let deadline: u64 = env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap();
         let goal: i128 = env.storage().instance().get(&CAMPAIGN_GOAL).unwrap();
         let total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap();
 
-        // Cek kondisi untuk refund
         if env.ledger().timestamp() <= deadline {
             panic!("Campaign has not ended yet");
         }
@@ -184,15 +168,67 @@ impl CrowdfundingContract {
             panic!("No donation to refund");
         }
 
-        // Update state
         donations.set(donor.clone(), 0);
         env.storage().instance().set(&DONATIONS, &donations);
         env.storage().instance().set(&TOTAL_RAISED, &(total_raised - donation_amount));
 
-        // Transfer XLM kembali ke donor
         let xlm_token_address: Address = env.storage().instance().get(&XLM_TOKEN_ADDRESS).unwrap();
         let xlm_token = token::Client::new(&env, &xlm_token_address);
         xlm_token.transfer(&env.current_contract_address(), &donor, &donation_amount);
+    }
+
+    pub fn get_leaderboard(env: Env) -> Vec<TopDonor> {
+        env.storage().instance().get(&LEADERBOARD).unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_streak_info(env: Env, donor: Address) -> StreakInfo {
+        let streaks: Map<Address, StreakInfo> = env.storage().instance().get(&STREAKS).unwrap();
+        streaks.get(donor).unwrap_or(StreakInfo { last_donation_day: 0, streak_days: 0 })
+    }
+
+    pub fn get_donation_history(env: Env) -> Vec<DonationRecord> {
+        env.storage().instance().get(&HISTORY).unwrap_or(Vec::new(&env))
+    }
+
+    pub fn get_total_raised(env: Env) -> i128 {
+        env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0)
+    }
+
+    pub fn get_donation(env: Env, donor: Address) -> i128 {
+        let donations: Map<Address, i128> = env.storage().instance().get(&DONATIONS).unwrap();
+        donations.get(donor).unwrap_or(0)
+    }
+
+    pub fn get_is_already_init(env: Env) -> bool {
+        env.storage().instance().get(&IS_ALREADY_INIT).unwrap_or(false)
+    }
+
+    pub fn get_goal(env: Env) -> i128 {
+        env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0)
+    }
+
+    pub fn get_deadline(env: Env) -> u64 {
+        env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap_or(0)
+    }
+
+    pub fn is_goal_reached(env: Env) -> bool {
+        let total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0);
+        let goal: i128 = env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0);
+        total_raised >= goal
+    }
+
+    pub fn is_ended(env: Env) -> bool {
+        let deadline: u64 = env.storage().instance().get(&CAMPAIGN_DEADLINE).unwrap_or(0);
+        env.ledger().timestamp() > deadline
+    }
+
+    pub fn get_progress_percentage(env: Env) -> i128 {
+        let total_raised: i128 = env.storage().instance().get(&TOTAL_RAISED).unwrap_or(0);
+        let goal: i128 = env.storage().instance().get(&CAMPAIGN_GOAL).unwrap_or(0);
+        if goal == 0 {
+            return 0;
+        }
+        (total_raised * 100) / goal
     }
 }
 
