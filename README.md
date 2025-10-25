@@ -1,114 +1,114 @@
 # Soroban Crowdfunding Smart Contract
 
-Ini adalah contoh implementasi smart contract untuk platform crowdfunding (penggalangan dana) yang dibangun menggunakan Rust dan Soroban untuk berjalan di atas blockchain Stellar.
+This is an example implementation of a crowdfunding smart contract built with Rust and Soroban to run on the Stellar blockchain.
 
-Contract ini memungkinkan seorang kreator untuk membuat sebuah kampanye penggalangan dana dengan target (goal) dan batas waktu (deadline) tertentu. Para donatur dapat mengirimkan token XLM ke dalam contract. Jika target tidak tercapai hingga batas waktu berakhir, donatur dapat menarik kembali dana mereka.
+This contract allows a creator to launch a fundraising campaign with a specific goal and deadline. Donors can send XLM tokens to the contract. If the goal is not met by the deadline, donors can withdraw their funds.
 
-## 🚀 Fitur Utama
-- **Inisialisasi Kampanye**: Atur kreator, target dana, dan batas waktu.
-- **Donasi**: Terima donasi dalam bentuk token XLM.
-- **Pelacakan Progress**: Lihat total dana terkumpul dan persentasenya terhadap target.
-- **Refund**: Izinkan donatur untuk menarik kembali dana jika target tidak tercapai setelah batas waktu.
-- **Pengecekan Status**: Fungsi untuk melihat status kampanye (apakah sudah berakhir, apakah target tercapai).
+## 🚀 Key Features
+- **Campaign Initialization**: Set a creator, funding goal, and deadline.
+- **Donations**: Accept donations in the form of XLM tokens.
+- **Progress Tracking**: View the total amount raised and its percentage of the goal.
+- **Refunds**: Allow donors to withdraw their funds if the goal is not met after the deadline.
+- **Status Checks**: Functions to view the campaign status (has it ended, has the goal been reached).
 
 ---
 
-## 🛠️ 1. Persiapan Lingkungan (Prerequisites)
+## 🛠️ 1. Environment Setup (Prerequisites)
 
-Sebelum memulai, pastikan Anda telah menginstal perangkat berikut.
+Before you begin, ensure you have the following tools installed.
 
-### a. Instalasi Rust
-Jika belum terinstal, ikuti instruksi di situs resminya:
+### a. Rust Installation
+If you don't have it installed, follow the instructions on the official site:
 ➡️ **[https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)**
 
-### b. Instalasi Soroban CLI
-Ini adalah alat utama untuk membangun, mendeploy, dan berinteraksi dengan smart contract Soroban.
+### b. Soroban CLI Installation
+This is the primary tool for building, deploying, and interacting with Soroban smart contracts.
 
 ```sh
 cargo install soroban-cli
 ```
 
-Setelah instalasi, **tutup dan buka kembali terminal Anda**, lalu verifikasi dengan:
+After installation, **close and reopen your terminal**, then verify it works by running:
 ```sh
 soroban --version
 ```
-Anda seharusnya melihat nomor versi seperti `soroban-cli 20.x.x`.
+You should see a version number like `soroban-cli 20.x.x`.
 
 <details>
-<summary>⚠️ **Troubleshooting Instalasi Soroban CLI**</summary>
+<summary>⚠️ **Troubleshooting Soroban CLI Installation**</summary>
 
-Jika Anda mengalami masalah saat instalasi, coba solusi berikut:
+If you encounter issues during installation, try these solutions:
 
 1.  **Error: `soroban: command not found`**
-    Ini berarti lokasi instalasi `cargo` belum ada di `PATH` terminal Anda. Jalankan perintah ini, lalu tutup dan buka kembali terminal Anda.
+    This means the `cargo` installation directory is not in your terminal's `PATH`. Run this command, then close and reopen your terminal.
     ```sh
     source "$HOME/.cargo/env"
     ```
 
 2.  **Error: `binary 'stellar' already exists...`**
-    Ini berarti ada konflik dengan versi lama (`stellar-cli`). Gunakan flag `--force` untuk menimpanya.
+    This indicates a conflict with an older version (`stellar-cli`). Use the `--force` flag to overwrite it.
     ```sh
     cargo install soroban-cli --force
     ```
 
-3.  **Error Kompilasi (`could not compile soroban-cli`)**
-    Ini bisa terjadi karena *cache* atau versi yang tidak cocok. Solusinya adalah melakukan instalasi bersih:
+3.  **Compilation Error (`could not compile soroban-cli`)**
+    This can happen due to an incompatible cache or version mismatch. The solution is a clean installation:
     ```sh
-    # 1. Uninstall versi yang mungkin sudah terinstal sebagian
+    # 1. Uninstall any partially installed versions
     cargo uninstall soroban-cli
 
-    # 2. Coba instal lagi
+    # 2. Try installing again
     cargo install soroban-cli
     ```
 </details>
 
 ---
 
-## ⚙️ 2. Alur Kerja Proyek
+## ⚙️ 2. Project Workflow
 
-### a. Clone Repositori
+### a. Clone the Repository
 ```sh
-# Ganti dengan URL repositori Anda jika perlu
+# Replace with your repository URL if needed
 git clone https://github.com/your-username/yopi-token.git
 cd yopi-token/contracts/crowdfunding
 ```
 
-### b. Jalankan Tes Lokal
-Sebelum mendeploy, pastikan semua logika contract berjalan sesuai harapan dengan menjalankan tes lokal.
+### b. Run Local Tests
+Before deploying, ensure all contract logic works as expected by running the local tests.
 ```sh
 cargo test
 ```
 
-### c. Build Kontrak
-Kompilasi kode Rust menjadi file WebAssembly (.wasm) yang siap untuk di-deploy.
+### c. Build the Contract
+Compile the Rust code into a WebAssembly (.wasm) file ready for deployment.
 ```sh
 soroban contract build
 ```
-File output akan berada di `../../target/wasm32-unknown-unknown/release/crowdfunding.wasm`.
+The output file will be located at `../../target/wasm32-unknown-unknown/release/crowdfunding.wasm`.
 
 ---
 
-## 🌐 3. Tutorial Deploy & Interaksi di Testnet
+## 🌐 3. Tutorial: Deploy & Interact on Testnet
 
-Tutorial ini menunjukkan cara mendeploy dan berinteraksi dengan contract di **Stellar Testnet**.
+This tutorial shows how to deploy and interact with the contract on the **Stellar Testnet**.
 
-### a. Siapkan Akun Testnet
-Anda memerlukan akun Testnet yang memiliki saldo XLM untuk membayar biaya transaksi.
+### a. Set Up a Testnet Account
+You need a Testnet account with a balance of XLM to pay for transaction fees.
 
 ```sh
-# Buat identitas baru bernama 'user1' (nama bisa apa saja)
+# Create a new identity named 'user1' (the name can be anything)
 soroban config identity generate user1
 
-# Dapatkan alamat publiknya (diawali dengan 'G...')
+# Get its public address (starts with 'G...')
 soroban config identity address user1
 
-# Minta dana dari Testnet Friendbot. Buka link berikut di browser
-# dan paste alamat 'G...' Anda untuk mendapatkan XLM gratis.
+# Request funds from the Testnet Friendbot. Open the link below in a browser
+# and paste your 'G...' address to get free XLM.
 # -> https://friendbot.stellar.org/
 ```
 
-### b. Deploy Kontrak
-Deploy file `.wasm` yang sudah Anda build ke Testnet.
+### b. Deploy the Contract
+Deploy the `.wasm` file you built to the Testnet.
 
 ```sh
 soroban contract deploy \
@@ -116,20 +116,20 @@ soroban contract deploy \
   --source user1 \
   --network testnet
 ```
-**PENTING**: Salin **Contract ID** (diawali dengan `C...`) yang muncul setelah deployment berhasil. Simpan ID ini.
+**IMPORTANT**: Copy the **Contract ID** (starts with `C...`) that appears after a successful deployment. Save this ID.
 
-### c. Inisialisasi Kampanye
-Setelah di-deploy, contract harus diinisialisasi satu kali.
+### c. Initialize the Campaign
+Once deployed, the contract must be initialized.
 
-- **`--id`**: Contract ID dari langkah sebelumnya.
-- **`--owner`**: Alamat yang akan menjadi pemilik kampanye (gunakan alamat `user1` Anda).
-- **`--goal`**: Target dana dalam satuan stroops (1 XLM = 10,000,000 stroops). Contoh: 100 XLM = `1000000000`.
-- **`--deadline`**: Batas waktu dalam format Unix timestamp.
-- **`--xlm_token`**: Alamat contract token XLM di Testnet (ini adalah alamat tetap).
+- **`--id`**: The Contract ID from the previous step.
+- **`--owner`**: The address that will own the campaign (use your `user1` address).
+- **`--goal`**: The funding target in stroops (1 XLM = 10,000,000 stroops). Example: 100 XLM = `1000000000`.
+- **`--deadline`**: The deadline as a Unix timestamp.
+- **`--xlm_token`**: The address of the XLM token contract on Testnet (this is a fixed address).
 
 ```sh
-# Ganti <YOUR_CONTRACT_ID> dan <YOUR_ACCOUNT_ADDRESS>
-# Contoh deadline: 24 jam dari sekarang
+# Replace <YOUR_CONTRACT_ID> and <YOUR_ACCOUNT_ADDRESS>
+# Example deadline: 24 hours from now
 DEADLINE=$(($(date +%s) + 86400))
 CONTRACT_ID="<YOUR_CONTRACT_ID>"
 OWNER_ADDRESS="<YOUR_ACCOUNT_ADDRESS>"
@@ -143,11 +143,11 @@ soroban contract invoke \
   --arg "{\\"owner\\":\\"$OWNER_ADDRESS\\",\\"goal\\":1000000000,\\"deadline\\":$DEADLINE,\\"xlm_token\\":\\"$XLM_TOKEN_ADDRESS\\"}"
 ```
 
-### d. Berdonasi ke Kampanye
-Sekarang, siapa pun bisa berdonasi. Di sini, kita menggunakan `user1` sebagai donatur.
+### d. Donate to the Campaign
+Now, anyone can donate. Here, we use `user1` as the donor.
 
 ```sh
-# Contoh donasi: 20 XLM = 200000000 stroops
+# Example donation: 20 XLM = 200000000 stroops
 soroban contract invoke \
   --id "$CONTRACT_ID" \
   --source user1 \
@@ -156,22 +156,22 @@ soroban contract invoke \
   --arg "{\\"donor\\":\\"$OWNER_ADDRESS\\",\\"amount\\":200000000}"
 ```
 
-### e. Cek Status Kampanye
-Gunakan fungsi "read-only" untuk melihat progress tanpa perlu mengirim transaksi.
+### e. Check Campaign Status
+Use read-only functions to view progress without sending a transaction.
 
 ```sh
-# Cek total dana terkumpul
+# Check the total amount raised
 soroban contract read --id "$CONTRACT_ID" --fn get_total_raised
 
-# Cek persentase progress
+# Check the progress percentage
 soroban contract read --id "$CONTRACT_ID" --fn get_progress_percentage
 ```
 
-### f. Tarik Dana (Refund)
-Jika batas waktu sudah lewat DAN target tidak tercapai, donatur bisa meminta refund.
+### f. Withdraw Funds (Refund)
+If the deadline has passed AND the goal was not met, a donor can request a refund.
 
 ```sh
-# Pastikan Anda menjalankan ini setelah deadline terlewati
+# Make sure you run this after the deadline has passed
 soroban contract invoke \
   --id "$CONTRACT_ID" \
   --source user1 \
